@@ -1,0 +1,2148 @@
+diff --git a/src/Makefile b/src/Makefile
+index 2ee0c5a0..b7b732f4 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -20,6 +20,12 @@
+ #         - Linux DRM subsystem (KMS mode)
+ #     > PLATFORM_ANDROID:
+ #         - Android (ARM, ARM64)
++#     > PLATFORM_VITA:
++#         - PlayStation Vita
++#     > PLATFORM_ORBIS:
++#         - PlayStation 4 Orbis
++#     > PLATFORM_PROSPERO:
++#         - PlayStation 5 Prospero
+ #
+ #   Many thanks to Milan Nikolic (@gen2brain) for implementing Android platform pipeline.
+ #   Many thanks to Emanuele Petriglia for his contribution on GNU/Linux pipeline.
+@@ -50,8 +56,10 @@
+ 
+ # Define required environment variables
+ #------------------------------------------------------------------------------------------------
+-# Define target platform: PLATFORM_DESKTOP, PLATFORM_DRM, PLATFORM_ANDROID, PLATFORM_WEB
+-PLATFORM             ?= PLATFORM_DESKTOP
++# Define target platform: PLATFORM_DESKTOP, PLATFORM_DRM, PLATFORM_ANDROID, PLATFORM_WEB, PLATFORM_VITA, PLATFORM_ORBIS, PLATFORM_PROSPERO
++PLATFORM             ?= PLATFORM_VITA
++#PLATFORM             ?= PLATFORM_ORBIS
++#PLATFORM             ?= PLATFORM_PROSPERO
+ 
+ # Define required raylib variables
+ RAYLIB_VERSION        = 5.0.0
+@@ -85,16 +93,18 @@ RAYLIB_CONFIG_FLAGS  ?= NONE
+ 
+ # Include raylib modules on compilation
+ # NOTE: Some programs like tools could not require those modules
+-RAYLIB_MODULE_AUDIO  ?= TRUE
++RAYLIB_MODULE_AUDIO  ?= FALSE
+ RAYLIB_MODULE_MODELS ?= TRUE
+ RAYLIB_MODULE_RAYGUI ?= FALSE
++#Spine for raylib
++RAYLIB_MODULE_SPINE  ?= FALSE
+ 
+ # NOTE: Additional libraries have been moved to their own repos:
+ # raygui: https://github.com/raysan5/raygui
+ RAYLIB_MODULE_RAYGUI_PATH ?= $(RAYLIB_SRC_PATH)/../../raygui/src
+ 
+ # Use external GLFW library instead of rglfw module
+-USE_EXTERNAL_GLFW     ?= FALSE
++USE_EXTERNAL_GLFW     ?= TRUE
+ 
+ # PLATFORM_DESKTOP_SDL: It requires SDL library to be provided externally
+ # WARNING: Library is not included in raylib, it MUST be configured by users
+@@ -211,6 +221,22 @@ ifeq ($(PLATFORM),PLATFORM_ANDROID)
+ 
+ endif
+ 
++#PlayStation Platforms
++ifeq ($(PLATFORM),PLATFORM_VITA)
++    PLATFORM_OS = VITA
++    PLATFORM_SHELL = sh
++endif
++
++ifeq ($(PLATFORM),PLATFORM_ORBIS)
++    PLATFORM_OS = ORBIS
++    PLATFORM_SHELL = sh
++endif
++
++ifeq ($(PLATFORM),PLATFORM_PROSPERO)
++    PLATFORM_OS = PROSPERO
++    PLATFORM_SHELL = sh
++endif
++
+ # Define raylib graphics api depending on selected platform
+ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
+     # By default use OpenGL 3.3 on desktop platforms
+@@ -238,6 +264,21 @@ ifeq ($(PLATFORM),PLATFORM_ANDROID)
+     GRAPHICS = GRAPHICS_API_OPENGL_ES2
+ endif
+ 
++ifeq ($(PLATFORM),PLATFORM_VITA)
++    # By default use OpenGL ES 2.0 on VITA
++    GRAPHICS = GRAPHICS_API_OPENGL_ES2
++endif
++
++ifeq ($(PLATFORM),PLATFORM_ORBIS)
++    # By default use OpenGL ES 2.0 on ORBIS
++    GRAPHICS = GRAPHICS_API_OPENGL_ES2
++endif
++
++ifeq ($(PLATFORM),PLATFORM_PROSPERO)
++    # By default use OpenGL ES 2.0 on PROSPERO
++    GRAPHICS = GRAPHICS_API_OPENGL_ES2
++endif
++
+ # Define default C compiler and archiver to pack library: CC, AR
+ #------------------------------------------------------------------------------------------------
+ CC = gcc
+@@ -285,6 +326,21 @@ ifeq ($(PLATFORM),PLATFORM_ANDROID)
+     AR = $(ANDROID_TOOLCHAIN)/bin/llvm-ar
+ endif
+ 
++ifeq ($(PLATFORM),PLATFORM_VITA)
++    CC = arm-vita-eabi-gcc
++    AR = arm-vita-eabi-ar
++endif
++
++ifeq ($(PLATFORM),PLATFORM_ORBIS)
++    CC = clang
++    AR = orbis-ar
++endif
++
++ifeq ($(PLATFORM),PLATFORM_PROSPERO)
++    CC = clang
++    AR = llvm-ar
++endif
++
+ # Define compiler flags: CFLAGS
+ #------------------------------------------------------------------------------------------------
+ #  -O1                      defines optimization level
+@@ -424,6 +480,23 @@ endif
+ #------------------------------------------------------------------------------------------------
+ INCLUDE_PATHS = -I. 
+ 
++ifeq ($(PLATFORM),PLATFORM_VITA)
++    CFLAGS = -Wl,-q -Wall -Wno-incompatible-pointer-types -Wno-pointer-sign -O3 -nostartfiles -DVITA -D$(PLATFORM) -D$(GRAPHICS) 
++    INCLUDE_PATHS = -I.
++endif
++
++ifeq ($(PLATFORM),PLATFORM_ORBIS)
++    CFLAGS = -std=c11 -O3 -Wall --target=x86_64-sce-ps4 -D__PS4__ -D__ORBIS__ -D$(PLATFORM) -D$(GRAPHICS)
++    INCLUDE_PATHS = -isysroot $(ORBISDEV) -I. -Iinclude -I$(ORBISDEV)/usr/include/orbis 
++    LDFLAGS = -L$(ORBISDEV)/usr/lib -L. -Llib
++endif
++
++ifeq ($(PLATFORM),PLATFORM_PROSPERO)
++    CFLAGS = -std=c11 -O3 -Wall --target=x86_64-sie-ps5 -D__PS5__ -D__PROSPERO__ -D$(PLATFORM) -D$(GRAPHICS)
++    INCLUDE_PATHS = -isysroot $(PROSPERODEV) -I. -Iinclude -I$(PROSPERODEV)/usr/include/prospero 
++    LDFLAGS = -L$(PROSPERODEV)/usr/lib -L. -Llib
++endif
++
+ # Define additional directories containing required header files
+ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
+     INCLUDE_PATHS += -Iexternal/glfw/include -Iexternal/glfw/deps/mingw
+@@ -587,6 +660,11 @@ ifeq ($(PLATFORM),PLATFORM_ANDROID)
+     OBJS += android_native_app_glue.o
+ endif
+ 
++#Spine module for raylib
++ifeq ($(RAYLIB_MODULE_SPINE),TRUE)
++    OBJS += rspine.o
++endif
++
+ # Define processes to execute
+ #------------------------------------------------------------------------------------------------
+ # Default target entry
+@@ -710,6 +788,10 @@ endif
+ android_native_app_glue.o : $(NATIVE_APP_GLUE)/android_native_app_glue.c
+ 	$(CC) -c $< $(CFLAGS) $(INCLUDE_PATHS)
+ 
++# Compile Spine module for raylib
++rspine.o : rspine.c raylib.h rlgl.h raymath.h utils.h
++	$(CC) -c $< $(CFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM) -D$(GRAPHICS)
++
+ # Install generated and needed files to desired directories.
+ # On GNU/Linux and BSDs, there are some standard directories that contain extra
+ # libraries and header files. These directories (often /usr/local/lib and
+@@ -722,69 +804,44 @@ android_native_app_glue.o : $(NATIVE_APP_GLUE)/android_native_app_glue.c
+ # See below and ../examples/Makefile for more information.
+ 
+ # RAYLIB_INSTALL_PATH should be the desired full path to libraylib. No relative paths.
+-DESTDIR ?= /usr/local
+-RAYLIB_INSTALL_PATH ?= $(DESTDIR)/lib
++#DESTDIR ?= /usr/local
++
++ifeq ($(PLATFORM),PLATFORM_VITA)
++PREFIX ?= $(VITASDK)/arm-vita-eabi
++endif
++
++ifeq ($(PLATFORM),PLATFORM_ORBIS)
++PREFIX ?= $(ORBISDEV)/usr
++endif
++
++ifeq ($(PLATFORM),PLATFORM_PROSPERO)
++PREFIX ?= $(PROSPERODEV)/usr
++endif
++
++RAYLIB_INSTALL_PATH ?= $(DESTDIR)$(PREFIX)/lib
+ # RAYLIB_H_INSTALL_PATH locates the installed raylib header and associated source files.
+-RAYLIB_H_INSTALL_PATH ?= $(DESTDIR)/include
++RAYLIB_H_INSTALL_PATH ?= $(DESTDIR)$(PREFIX)/include
+ 
+ install :
+-ifeq ($(ROOT),root)
+-    ifeq ($(PLATFORM_OS),LINUX)
+-        # Attention! You are root, writing files to $(RAYLIB_INSTALL_PATH)
+-        # and $(RAYLIB_H_INSTALL_PATH). Consult this Makefile for more information.
+-        # Prepare the environment as needed.
+-		mkdir --parents --verbose $(RAYLIB_INSTALL_PATH)
+-		mkdir --parents --verbose $(RAYLIB_H_INSTALL_PATH)
+-        ifeq ($(RAYLIB_LIBTYPE),SHARED)
+-            # Installing raylib to $(RAYLIB_INSTALL_PATH).
+-			cp --update --verbose $(RAYLIB_RELEASE_PATH)/libraylib.so.$(RAYLIB_VERSION) $(RAYLIB_INSTALL_PATH)/lib$(RAYLIB_LIB_NAME).so.$(RAYLIB_VERSION)
+-			cd $(RAYLIB_INSTALL_PATH); ln -fsv lib$(RAYLIB_LIB_NAME).so.$(RAYLIB_VERSION) lib$(RAYLIB_LIB_NAME).so.$(RAYLIB_API_VERSION)
+-			cd $(RAYLIB_INSTALL_PATH); ln -fsv lib$(RAYLIB_LIB_NAME).so.$(RAYLIB_API_VERSION) lib$(RAYLIB_LIB_NAME).so
+-            # Uncomment to update the runtime linker cache with RAYLIB_INSTALL_PATH.
+-            # Not necessary if later embedding RPATH in your executable. See examples/Makefile.
+-			ldconfig $(RAYLIB_INSTALL_PATH)
+-        else
+-            # Installing raylib to $(RAYLIB_INSTALL_PATH).
+-			cp --update --verbose $(RAYLIB_RELEASE_PATH)/lib$(RAYLIB_LIB_NAME).a $(RAYLIB_INSTALL_PATH)/lib$(RAYLIB_LIB_NAME).a
+-        endif
+-        # Copying raylib development files to $(RAYLIB_H_INSTALL_PATH).
+-		cp --update raylib.h $(RAYLIB_H_INSTALL_PATH)/raylib.h
+-		cp --update raymath.h $(RAYLIB_H_INSTALL_PATH)/raymath.h
+-		cp --update rlgl.h $(RAYLIB_H_INSTALL_PATH)/rlgl.h
+-		@echo "raylib development files installed/updated!"
+-    else
+-		@echo "This function currently works on GNU/Linux systems. Add yours today (^;"
+-    endif
+-else
+-	@echo "Error: Root permissions needed for installation. Try sudo make install"
+-endif
++	mkdir -p $(RAYLIB_INSTALL_PATH)
++	mkdir -p $(RAYLIB_H_INSTALL_PATH)
++	cp --update --verbose $(RAYLIB_RELEASE_PATH)/lib$(RAYLIB_LIB_NAME).a $(RAYLIB_INSTALL_PATH)/lib$(RAYLIB_LIB_NAME).a
++	cp --update raylib.h $(RAYLIB_H_INSTALL_PATH)/raylib.h
++	cp --update raymath.h $(RAYLIB_H_INSTALL_PATH)/raymath.h
++	cp --update rlgl.h $(RAYLIB_H_INSTALL_PATH)/rlgl.h
++	#cp --update rayspine.h $(RAYLIB_H_INSTALL_PATH)/rayspine.h
++	#cp --update $(RAYLIB_MODULE_PHYSAC_PATH)/physac.h $(RAYLIB_H_INSTALL_PATH)/physac.h
++	@echo "raylib development files installed/updated!"
+ 
+ # Remove raylib dev files installed on the system
+ # NOTE: see 'install' target.
+ uninstall :
+-ifeq ($(ROOT),root)
+-    # WARNING: You are root, about to delete items from $(RAYLIB_INSTALL_PATH).
+-    # and $(RAYLIB_H_INSTALL_PATH). Please confirm each item.
+-    ifeq ($(PLATFORM_OS),LINUX)
+-        ifeq ($(RAYLIB_LIBTYPE),SHARED)
+-			rm --force --interactive --verbose $(RAYLIB_INSTALL_PATH)/libraylib.so
+-			rm --force --interactive --verbose $(RAYLIB_INSTALL_PATH)/libraylib.so.$(RAYLIB_API_VERSION)
+-			rm --force --interactive --verbose $(RAYLIB_INSTALL_PATH)/libraylib.so.$(RAYLIB_VERSION)
+-            # Uncomment to clean up the runtime linker cache. See install target.
+-			ldconfig
+-        else
+-			rm --force --interactive --verbose $(RAYLIB_INSTALL_PATH)/libraylib.a
+-        endif
+-		rm --force --interactive --verbose $(RAYLIB_H_INSTALL_PATH)/raylib.h
+-		rm --force --interactive --verbose $(RAYLIB_H_INSTALL_PATH)/raymath.h
+-		rm --force --interactive --verbose $(RAYLIB_H_INSTALL_PATH)/rlgl.h
+-		@echo "raylib development files removed!"
+-    else
+-		@echo "This function currently works on GNU/Linux systems. Add yours today (^;"
+-    endif
+-else
+-	@echo "Error: Root permissions needed for uninstallation. Try sudo make uninstall"
+-endif
++	rm --force --interactive --verbose $(RAYLIB_H_INSTALL_PATH)/raylib.h
++	rm --force --interactive --verbose $(RAYLIB_H_INSTALL_PATH)/raymath.h
++	rm --force --interactive --verbose $(RAYLIB_H_INSTALL_PATH)/rlgl.h
++	#rm --force --interactive --verbose $(RAYLIB_H_INSTALL_PATH)/physac.h
++	#rm --force --interactive --verbose $(RAYLIB_H_INSTALL_PATH)/rayspine.h
++	@echo "raylib development files removed!"
+ 
+ .PHONY: clean_shell_cmd clean_shell_sh
+ 
+diff --git a/src/config.h b/src/config.h
+index 3fd1c81f..09eb2bd0 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -36,7 +36,7 @@
+ #define SUPPORT_MODULE_RTEXTURES        1
+ #define SUPPORT_MODULE_RTEXT            1       // WARNING: It requires SUPPORT_MODULE_RTEXTURES to load sprite font textures
+ #define SUPPORT_MODULE_RMODELS          1
+-#define SUPPORT_MODULE_RAUDIO           1
++//#define SUPPORT_MODULE_RAUDIO           1
+ 
+ //------------------------------------------------------------------------------------
+ // Module: rcore - Configuration Flags
+@@ -44,28 +44,28 @@
+ // Camera module is included (rcamera.h) and multiple predefined cameras are available: free, 1st/3rd person, orbital
+ #define SUPPORT_CAMERA_SYSTEM           1
+ // Gestures module is included (rgestures.h) to support gestures detection: tap, hold, swipe, drag
+-#define SUPPORT_GESTURES_SYSTEM         1
++//#define SUPPORT_GESTURES_SYSTEM         1
+ // Include pseudo-random numbers generator (rprand.h), based on Xoshiro128** and SplitMix64
+ #define SUPPORT_RPRAND_GENERATOR        1
+ // Mouse gestures are directly mapped like touches and processed by gestures system
+-#define SUPPORT_MOUSE_GESTURES          1
++//#define SUPPORT_MOUSE_GESTURES          1
+ // Reconfigure standard input to receive key inputs, works with SSH connection.
+-#define SUPPORT_SSH_KEYBOARD_RPI        1
++//#define SUPPORT_SSH_KEYBOARD_RPI        1
+ // Setting a higher resolution can improve the accuracy of time-out intervals in wait functions.
+ // However, it can also reduce overall system performance, because the thread scheduler switches tasks more often.
+-#define SUPPORT_WINMM_HIGHRES_TIMER     1
++//#define SUPPORT_WINMM_HIGHRES_TIMER     1
+ // Use busy wait loop for timing sync, if not defined, a high-resolution timer is set up and used
+-//#define SUPPORT_BUSY_WAIT_LOOP          1
++#define SUPPORT_BUSY_WAIT_LOOP          1
+ // Use a partial-busy wait loop, in this case frame sleeps for most of the time, but then runs a busy loop at the end for accuracy
+ #define SUPPORT_PARTIALBUSY_WAIT_LOOP    1
+ // Allow automatic screen capture of current screen pressing F12, defined in KeyCallback()
+-#define SUPPORT_SCREEN_CAPTURE          1
++//#define SUPPORT_SCREEN_CAPTURE          1
+ // Allow automatic gif recording of current screen pressing CTRL+F12, defined in KeyCallback()
+-#define SUPPORT_GIF_RECORDING           1
++//#define SUPPORT_GIF_RECORDING           1
+ // Support CompressData() and DecompressData() functions
+-#define SUPPORT_COMPRESSION_API         1
++//#define SUPPORT_COMPRESSION_API         1
+ // Support automatic generated events, loading and recording of those events when required
+-#define SUPPORT_AUTOMATION_EVENTS       1
++//#define SUPPORT_AUTOMATION_EVENTS       1
+ // Support custom frame control, only for advance users
+ // By default EndDrawing() does this job: draws everything + SwapScreenBuffer() + manage frame timing + PollInputEvents()
+ // Enabling this flag allows manual control of the frame processes, use at your own risk
+@@ -97,7 +97,7 @@
+ //#define RLGL_ENABLE_OPENGL_DEBUG_CONTEXT       1
+ 
+ // Show OpenGL extensions and capabilities detailed logs on init
+-//#define RLGL_SHOW_GL_DETAILS_INFO              1
++#define RLGL_SHOW_GL_DETAILS_INFO              1
+ 
+ //#define RL_DEFAULT_BATCH_BUFFER_ELEMENTS    4096    // Default internal render batch elements limits
+ #define RL_DEFAULT_BATCH_BUFFERS               1      // Default number of batch buffers (multi-buffering)
+@@ -134,6 +134,7 @@
+ //------------------------------------------------------------------------------------
+ // Module: rshapes - Configuration Flags
+ //------------------------------------------------------------------------------------
++#define SUPPORT_FONT_TEXTURE        1
+ // Use QUADS instead of TRIANGLES for drawing when possible
+ // Some lines-based shapes could still use lines
+ #define SUPPORT_QUADS_DRAW_MODE         1
+diff --git a/src/external/stb_truetype.h b/src/external/stb_truetype.h
+index bbf2284b..edd94515 100644
+--- a/src/external/stb_truetype.h
++++ b/src/external/stb_truetype.h
+@@ -3042,15 +3042,25 @@ static void stbtt__handle_clipped_edge(float *scanline, int x, stbtt__active_edg
+    }
+ 
+    if (x0 == x)
++   {
+       STBTT_assert(x1 <= x+1);
++   }
+    else if (x0 == x+1)
++   {
+       STBTT_assert(x1 >= x);
++   }
+    else if (x0 <= x)
++   {
+       STBTT_assert(x1 <= x);
++   }
+    else if (x0 >= x+1)
++   {
+       STBTT_assert(x1 >= x+1);
++   }
+    else
++   {
+       STBTT_assert(x1 >= x && x1 <= x+1);
++   }
+ 
+    if (x0 <= x && x1 <= x)
+       scanline[x] += e->direction * (y1-y0);
+diff --git a/src/platforms/rcore_orbis.c b/src/platforms/rcore_orbis.c
+new file mode 100644
+index 00000000..ae8efc3a
+--- /dev/null
++++ b/src/platforms/rcore_orbis.c
+@@ -0,0 +1,656 @@
++/**********************************************************************************************
++*
++*   rcore_orbis - Functions to manage window, graphics device and inputs
++*
++*   PLATFORM: ORBIS
++*       - PlayStation 4 ORBIS
++*
++*   LIMITATIONS:
++*       - Limitation 01
++*       - Limitation 02
++*
++*   POSSIBLE IMPROVEMENTS:
++*       - Improvement 01
++*       - Improvement 02
++*
++*   ADDITIONAL NOTES:
++*       - TRACELOG() function is located in raylib [utils] module using debugnet udp logs
++*       - Based in original port by Antonio Jose Ramos Marquez aka bigboss @psxdev		
++*
++*   CONFIGURATION:
++*       #define RCORE_PLATFORM_CUSTOM_FLAG
++*           Custom flag for rcore on target platform -not used-
++*
++*   DEPENDENCIES:
++*       orbisdev - Provides C API to access Orbis homebrew functionality
++*       orbislink - self loader from nfs and retail piglet loader
++*
++*   LICENSE: zlib/libpng
++*
++*   Copyright (c) 2013-2023 Ramon Santamaria (@raysan5) and contributors
++*
++*   This software is provided "as-is", without any express or implied warranty. In no event
++*   will the authors be held liable for any damages arising from the use of this software.
++*
++*   Permission is granted to anyone to use this software for any purpose, including commercial
++*   applications, and to alter it and redistribute it freely, subject to the following restrictions:
++*
++*     1. The origin of this software must not be misrepresented; you must not claim that you
++*     wrote the original software. If you use this software in a product, an acknowledgment
++*     in the product documentation would be appreciated but is not required.
++*
++*     2. Altered source versions must be plainly marked as such, and must not be misrepresented
++*     as being the original software.
++*
++*     3. This notice may not be removed or altered from any source distribution.
++*
++**********************************************************************************************/
++#include <user_mem.h>
++#include <orbisdev.h>
++#include <orbislink.h>
++#include "EGL/egl.h"
++#include "EGL/eglext.h"
++#include "GLES2/gl2.h"
++#include <piglet.h>
++
++
++//----------------------------------------------------------------------------------
++// Types and Structures Definition
++//----------------------------------------------------------------------------------
++typedef struct {
++    // TODO: Define the platform specific variables required
++
++    // Display data
++    EGLDisplay device;                  // Native display device (physical screen connection)
++    EGLSurface surface;                 // Surface to draw on, framebuffers (connected to context)
++    EGLContext context;                 // Graphic context, mode in which drawing can be done
++    EGLConfig config;                   // Graphic config
++} PlatformData;
++
++//----------------------------------------------------------------------------------
++// Global Variables Definition
++//----------------------------------------------------------------------------------
++extern CoreData CORE;                   // Global CORE state context
++
++static PlatformData platform = { 0 };   // Platform specific data
++
++//----------------------------------------------------------------------------------
++// Module Internal Functions Declaration
++//----------------------------------------------------------------------------------
++int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
++bool InitGraphicsDevice(void);   // Initialize graphics device
++
++//----------------------------------------------------------------------------------
++// Module Functions Declaration
++//----------------------------------------------------------------------------------
++// NOTE: Functions declaration is provided by raylib.h
++
++//----------------------------------------------------------------------------------
++// Module Functions Definition: Window and Graphics Device
++//----------------------------------------------------------------------------------
++
++// Check if application should close
++bool WindowShouldClose(void)
++{
++    if (CORE.Window.ready) return CORE.Window.shouldClose;
++    else return true;
++}
++
++// Toggle fullscreen mode
++void ToggleFullscreen(void)
++{
++    TRACELOG(LOG_WARNING, "ToggleFullscreen() not available on target platform");
++}
++
++// Toggle borderless windowed mode
++void ToggleBorderlessWindowed(void)
++{
++    TRACELOG(LOG_WARNING, "ToggleBorderlessWindowed() not available on target platform");
++}
++
++// Set window state: maximized, if resizable
++void MaximizeWindow(void)
++{
++    TRACELOG(LOG_WARNING, "MaximizeWindow() not available on target platform");
++}
++
++// Set window state: minimized
++void MinimizeWindow(void)
++{
++    TRACELOG(LOG_WARNING, "MinimizeWindow() not available on target platform");
++}
++
++// Set window state: not minimized/maximized
++void RestoreWindow(void)
++{
++    TRACELOG(LOG_WARNING, "RestoreWindow() not available on target platform");
++}
++
++// Set window configuration state using flags
++void SetWindowState(unsigned int flags)
++{
++    TRACELOG(LOG_WARNING, "SetWindowState() not available on target platform");
++}
++
++// Clear window configuration state flags
++void ClearWindowState(unsigned int flags)
++{
++    TRACELOG(LOG_WARNING, "ClearWindowState() not available on target platform");
++}
++
++// Set icon for window
++void SetWindowIcon(Image image)
++{
++    TRACELOG(LOG_WARNING, "SetWindowIcon() not available on target platform");
++}
++
++// Set icon for window
++void SetWindowIcons(Image *images, int count)
++{
++    TRACELOG(LOG_WARNING, "SetWindowIcons() not available on target platform");
++}
++
++// Set title for window
++void SetWindowTitle(const char *title)
++{
++    CORE.Window.title = title;
++}
++
++// Set window position on screen (windowed mode)
++void SetWindowPosition(int x, int y)
++{
++    TRACELOG(LOG_WARNING, "SetWindowPosition() not available on target platform");
++}
++
++// Set monitor for the current window
++void SetWindowMonitor(int monitor)
++{
++    TRACELOG(LOG_WARNING, "SetWindowMonitor() not available on target platform");
++}
++
++// Set window minimum dimensions (FLAG_WINDOW_RESIZABLE)
++void SetWindowMinSize(int width, int height)
++{
++    CORE.Window.screenMin.width = width;
++    CORE.Window.screenMin.height = height;
++}
++
++// Set window maximum dimensions (FLAG_WINDOW_RESIZABLE)
++void SetWindowMaxSize(int width, int height)
++{
++    CORE.Window.screenMax.width = width;
++    CORE.Window.screenMax.height = height;
++}
++
++// Set window dimensions
++void SetWindowSize(int width, int height)
++{
++    TRACELOG(LOG_WARNING, "SetWindowSize() not available on target platform");
++}
++
++// Set window opacity, value opacity is between 0.0 and 1.0
++void SetWindowOpacity(float opacity)
++{
++    TRACELOG(LOG_WARNING, "SetWindowOpacity() not available on target platform");
++}
++
++// Set window focused
++void SetWindowFocused(void)
++{
++    TRACELOG(LOG_WARNING, "SetWindowFocused() not available on target platform");
++}
++
++// Get native window handle
++void *GetWindowHandle(void)
++{
++    TRACELOG(LOG_WARNING, "GetWindowHandle() not implemented on target platform");
++    return NULL;
++}
++
++// Get number of monitors
++int GetMonitorCount(void)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorCount() not implemented on target platform");
++    return 1;
++}
++
++// Get number of monitors
++int GetCurrentMonitor(void)
++{
++    TRACELOG(LOG_WARNING, "GetCurrentMonitor() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor position
++Vector2 GetMonitorPosition(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorPosition() not implemented on target platform");
++    return (Vector2){ 0, 0 };
++}
++
++// Get selected monitor width (currently used by monitor)
++int GetMonitorWidth(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorWidth() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor height (currently used by monitor)
++int GetMonitorHeight(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorHeight() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor physical width in millimetres
++int GetMonitorPhysicalWidth(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorPhysicalWidth() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor physical height in millimetres
++int GetMonitorPhysicalHeight(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorPhysicalHeight() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor refresh rate
++int GetMonitorRefreshRate(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorRefreshRate() not implemented on target platform");
++    return 0;
++}
++
++// Get the human-readable, UTF-8 encoded name of the selected monitor
++const char *GetMonitorName(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorName() not implemented on target platform");
++    return "";
++}
++
++// Get window position XY on monitor
++Vector2 GetWindowPosition(void)
++{
++    TRACELOG(LOG_WARNING, "GetWindowPosition() not implemented on target platform");
++    return (Vector2){ 0, 0 };
++}
++
++// Get window scale DPI factor for current monitor
++Vector2 GetWindowScaleDPI(void)
++{
++    TRACELOG(LOG_WARNING, "GetWindowScaleDPI() not implemented on target platform");
++    return (Vector2){ 1.0f, 1.0f };
++}
++
++// Set clipboard text content
++void SetClipboardText(const char *text)
++{
++    TRACELOG(LOG_WARNING, "SetClipboardText() not implemented on target platform");
++}
++
++// Get clipboard text content
++// NOTE: returned string is allocated and freed by GLFW
++const char *GetClipboardText(void)
++{
++    TRACELOG(LOG_WARNING, "GetClipboardText() not implemented on target platform");
++    return NULL;
++}
++
++// Show mouse cursor
++void ShowCursor(void)
++{
++    CORE.Input.Mouse.cursorHidden = false;
++}
++
++// Hides mouse cursor
++void HideCursor(void)
++{
++    CORE.Input.Mouse.cursorHidden = true;
++}
++
++// Enables cursor (unlock cursor)
++void EnableCursor(void)
++{
++    // Set cursor position in the middle
++    SetMousePosition(CORE.Window.screen.width/2, CORE.Window.screen.height/2);
++
++    CORE.Input.Mouse.cursorHidden = false;
++}
++
++// Disables cursor (lock cursor)
++void DisableCursor(void)
++{
++    // Set cursor position in the middle
++    SetMousePosition(CORE.Window.screen.width/2, CORE.Window.screen.height/2);
++
++    CORE.Input.Mouse.cursorHidden = true;
++}
++
++// Swap back buffer with front buffer (screen drawing)
++void SwapScreenBuffer(void)
++{
++    eglSwapBuffers(platform.device, platform.surface);
++}
++
++//----------------------------------------------------------------------------------
++// Module Functions Definition: Misc
++//----------------------------------------------------------------------------------
++
++// Get elapsed time measure in seconds since InitTimer()
++double GetTime(void)
++{
++    struct timespec ts = { 0 };
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    unsigned long long int time = (unsigned long long int)ts.tv_sec*1000000000LLU + (unsigned long long int)ts.tv_nsec;
++
++    return (double)(time - CORE.Time.base)*1e-9;  // Elapsed time since InitTimer()
++}
++
++// Open URL with default system browser (if available)
++// NOTE: This function is only safe to use if you control the URL given.
++// A user could craft a malicious string performing another action.
++// Only call this function yourself not with user input or make sure to check the string yourself.
++// Ref: https://github.com/raysan5/raylib/issues/686
++void OpenURL(const char *url)
++{
++   // Security check to (partially) avoid malicious code on target platform
++    if (strchr(url, '\'') != NULL) TRACELOG(LOG_WARNING, "SYSTEM: Provided URL could be potentially malicious, avoid [\'] character");
++    else
++    {
++        // TODO:
++    }
++}
++
++//----------------------------------------------------------------------------------
++// Module Functions Definition: Inputs
++//----------------------------------------------------------------------------------
++
++// Set internal gamepad mappings
++int SetGamepadMappings(const char *mappings)
++{
++    TRACELOG(LOG_WARNING, "SetGamepadMappings() not implemented on target platform");
++    return 0;
++}
++
++// Set mouse position XY
++void SetMousePosition(int x, int y)
++{
++    CORE.Input.Mouse.currentPosition = (Vector2){ (float)x, (float)y };
++    CORE.Input.Mouse.previousPosition = CORE.Input.Mouse.currentPosition;
++}
++
++// Set mouse cursor
++void SetMouseCursor(int cursor)
++{
++    TRACELOG(LOG_WARNING, "SetMouseCursor() not implemented on target platform");
++}
++
++// Register all input events
++void PollInputEvents(void)
++{
++#if defined(SUPPORT_GESTURES_SYSTEM)
++    // NOTE: Gestures update must be called every frame to reset gestures correctly
++    // because ProcessGestureEvent() is just called on an event, not every frame
++    UpdateGestures();
++#endif
++
++    // Reset keys/chars pressed registered
++    CORE.Input.Keyboard.keyPressedQueueCount = 0;
++    CORE.Input.Keyboard.charPressedQueueCount = 0;
++
++    // Reset key repeats
++    for (int i = 0; i < MAX_KEYBOARD_KEYS; i++) CORE.Input.Keyboard.keyRepeatInFrame[i] = 0;
++
++    // Reset last gamepad button/axis registered state
++    CORE.Input.Gamepad.lastButtonPressed = 0; // GAMEPAD_BUTTON_UNKNOWN
++    //CORE.Input.Gamepad.axisCount = 0;
++
++    // Register previous touch states
++    for (int i = 0; i < MAX_TOUCH_POINTS; i++) CORE.Input.Touch.previousTouchState[i] = CORE.Input.Touch.currentTouchState[i];
++
++    // Reset touch positions
++    // TODO: It resets on target platform the mouse position and not filled again until a move-event,
++    // so, if mouse is not moved it returns a (0, 0) position... this behaviour should be reviewed!
++    //for (int i = 0; i < MAX_TOUCH_POINTS; i++) CORE.Input.Touch.position[i] = (Vector2){ 0, 0 };
++
++    // Register previous keys states
++    // NOTE: Android supports up to 260 keys
++    //for (int i = 0; i < 260; i++)
++    //{
++    //    CORE.Input.Keyboard.previousKeyState[i] = CORE.Input.Keyboard.currentKeyState[i];
++    //    CORE.Input.Keyboard.keyRepeatInFrame[i] = 0;
++    //}
++
++    // TODO: Poll input events for current plaform
++}
++
++//----------------------------------------------------------------------------------
++// Module Internal Functions Definition
++//----------------------------------------------------------------------------------
++
++// Initialize platform: graphics, inputs and more
++int InitPlatform(void)
++{
++
++    TRACELOG(LOG_INFO, "PLATFORM: calling to OrbisLink to initialize retail piglet module and default shaders");
++    int orbisLink_ret=initOrbisLinkAppVanillaGl();
++    if(orbisLink_ret!=0)
++    {
++        TRACELOG(LOG_FATAL, "PLATFORM: calling initOrbisLinkAppVanillaGl return %d",orbisLink_ret);
++        CORE.Window.ready = false;
++        return -1;
++    }
++    sceSystemServiceHideSplashScreen();
++  
++    CORE.Window.fullscreen = true;
++    CORE.Window.flags |= FLAG_FULLSCREEN_MODE;
++
++    CORE.Window.display.width = CORE.Window.screen.width;            // User desired width
++    CORE.Window.display.height = CORE.Window.screen.height;          // User desired height
++    CORE.Window.render.width = CORE.Window.screen.width;
++    CORE.Window.render.height = CORE.Window.screen.height;
++    CORE.Window.eventWaiting = false;
++    CORE.Window.screenScale = MatrixIdentity();     // No draw scaling required by default
++    CORE.Window.currentFbo.width = CORE.Window.screen.width;
++    CORE.Window.currentFbo.height = CORE.Window.screen.height;
++    CORE.Input.Mouse.currentPosition.x = (float)CORE.Window.screen.width/2.0f;
++    CORE.Input.Mouse.currentPosition.y = (float)CORE.Window.screen.height/2.0f;
++    CORE.Input.Mouse.scale = (Vector2){ 1.0f, 1.0f };
++
++
++    EGLint samples = 0;
++    EGLint sampleBuffer = 0;
++    if (CORE.Window.flags & FLAG_MSAA_4X_HINT)
++    {
++        samples = 4;
++        sampleBuffer = 1;
++        TRACELOG(LOG_INFO, "PLATFORM: Trying to enable MSAA x4");
++    }
++
++ 	const EGLint framebufferAttribs[] = {
++        //EGL_CONFIG_ID, 2,                         // You can always provide a configuration id. The one displayed here is Configuration 2
++        EGL_RED_SIZE, 8,                            // These four are always 8
++        EGL_GREEN_SIZE, 8,                          //
++        EGL_BLUE_SIZE, 8,                           //
++        EGL_ALPHA_SIZE, 8,                          //
++        EGL_DEPTH_SIZE, 32,                         // Depth is either 32 or 0
++        EGL_STENCIL_SIZE, 8,                        //  Stencil Size is either 8 or 0
++        EGL_SURFACE_TYPE, 5,                        // This is ALWAYS 5
++        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,    // Always EGL_OPENGL_ES2_BIT or 0x4
++        EGL_SAMPLE_BUFFERS, sampleBuffer,    // Activate MSAA
++        EGL_SAMPLES, samples,       // 4x Antialiasing if activated (Free on MALI GPUs)
++        EGL_NONE
++    };
++
++    const EGLint contextAttribs[] =
++    {
++        EGL_CONTEXT_CLIENT_VERSION, 3,
++        EGL_NONE
++    };
++
++    const EGLint surfaceAttributes[] =
++    {
++        EGL_RENDER_BUFFER, EGL_BACK_BUFFER,
++        EGL_NONE,
++    };
++
++    EGLint numConfigs = 0;
++    SceWindow render_window={0,CORE.Window.screen.width,CORE.Window.screen.height};
++    ScePglConfig pgl_config;
++    memset(&pgl_config, 0, sizeof(pgl_config));
++    {
++        pgl_config.size = sizeof(pgl_config);
++        pgl_config.flags = SCE_PGL_FLAGS_USE_COMPOSITE_EXT | SCE_PGL_FLAGS_USE_FLEXIBLE_MEMORY | 0x60;
++        pgl_config.processOrder = 1;
++        pgl_config.systemSharedMemorySize = 0x1000000;
++        pgl_config.videoSharedMemorySize = 0x3000000;
++        pgl_config.maxMappedFlexibleMemory = 0xFFFFFFFF;
++        pgl_config.drawCommandBufferSize = 0x100000;
++        pgl_config.lcueResourceBufferSize = 0x1000000;
++        pgl_config.dbgPosCmd_0x40 = 1920;
++        pgl_config.dbgPosCmd_0x44 = 1080;
++        pgl_config.dbgPosCmd_0x48 = 0;
++        pgl_config.dbgPosCmd_0x4C = 0;
++        pgl_config.unk_0x5C = 2;
++    }
++    int ret=scePigletSetConfigurationVSH(&pgl_config);
++    if (!ret)
++    {
++        TRACELOG(LOG_WARNING, "PLATFORM: Failed on scePigletSetConfigurationVSH: 0x%08x", ret);
++        return -1;
++    }
++    // Get an EGL device connection
++    platform.device = eglGetDisplay(EGL_DEFAULT_DISPLAY);
++    if (platform.device == EGL_NO_DISPLAY)
++    {
++        TRACELOG(LOG_WARNING, "PLATFORM: Failed to initialize EGL device");
++        return -1;
++    }
++
++    // Initialize the EGL device connection
++    if (eglInitialize(platform.device, NULL, NULL) == EGL_FALSE)
++    {
++        // If all of the calls to eglInitialize returned EGL_FALSE then an error has occurred.
++        TRACELOG(LOG_WARNING, "PLATFORM: Failed to initialize EGL device");
++        return -1;
++    }
++
++    // Set rendering API
++    ret=eglBindAPI(EGL_OPENGL_ES_API);
++    if(!ret)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM:  eglBindAPI failed: 0x%08X",ret);
++        return -1;
++    }
++    TRACELOG(LOG_INFO,"PLATFORM: eglBindAPI success.");
++
++    ret=eglSwapInterval(platform.device,0);
++    if(!ret)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM: eglSwapInterval failed: 0x%08X\n",ret);
++        return -1;
++    }
++
++	// Get an appropriate EGL framebuffer configuration
++    ret=eglChooseConfig(platform.device, framebufferAttribs, &platform.config, 1, &numConfigs);
++    if(!ret)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM: eglChooseConfig failed: 0x%08X",ret);
++        return -1;
++    }
++    if (numConfigs!=1)
++    {
++        TRACELOG(LOG_ERROR,"PLATFORM: No available configuration found.");
++        return -1;
++    }
++    TRACELOG(LOG_INFO,"PLATFORM: eglChooseConfig success.");
++    // Create an EGL rendering context
++    platform.context = eglCreateContext(platform.device, platform.config, EGL_NO_CONTEXT, contextAttribs);
++    if (platform.context == EGL_NO_CONTEXT)
++    {
++        TRACELOG(LOG_WARNING, "PLATFORM: Failed to create EGL context");
++        return -1;
++    }
++
++    // Create an EGL window surface
++    //---------------------------------------------------------------------------------
++    EGLint displayFormat = 0;
++
++    // EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is guaranteed to be accepted by ANativeWindow_setBuffersGeometry()
++    // As soon as we picked a EGLConfig, we can safely reconfigure the ANativeWindow buffers to match, using EGL_NATIVE_VISUAL_ID
++    eglGetConfigAttrib(platform.device, platform.config, EGL_NATIVE_VISUAL_ID, &displayFormat);
++
++    // At this point we need to manage render size vs screen size
++    // NOTE: This function use and modify global module variables:
++    //  -> CORE.Window.screen.width/CORE.Window.screen.height
++    //  -> CORE.Window.render.width/CORE.Window.render.height
++    //  -> CORE.Window.screenScale
++    SetupFramebuffer(CORE.Window.display.width, CORE.Window.display.height);
++
++    //ANativeWindow_setBuffersGeometry(platform.app->window, CORE.Window.render.width, CORE.Window.render.height, displayFormat);
++    //ANativeWindow_setBuffersGeometry(platform.app->window, 0, 0, displayFormat);       // Force use of native display size
++
++    platform.surface = eglCreateWindowSurface(platform.device, platform.config, &render_window, surfaceAttributes);
++    if(platform.surface==EGL_NO_SURFACE)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM: eglCreateWindowSurface failed: 0x%08X",ret);
++        return -1;
++    }
++    TRACELOG(LOG_INFO,"PLATFORM: eglCreateWindowSurface success.");
++
++    // There must be at least one frame displayed before the buffers are swapped
++    //eglSwapInterval(platform.device, 1);
++
++    if (eglMakeCurrent(platform.device, platform.surface, platform.surface, platform.context) == EGL_FALSE)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM: Failed to attach EGL rendering context to EGL surface 0x%08X",ret);
++        return -1;
++    }
++    else
++    {
++        CORE.Window.render.width = CORE.Window.screen.width;
++        CORE.Window.render.height = CORE.Window.screen.height;
++        CORE.Window.currentFbo.width = CORE.Window.render.width;
++        CORE.Window.currentFbo.height = CORE.Window.render.height;
++
++        TRACELOG(LOG_INFO, "PLATFORM: Device initialized successfully");
++        TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
++        TRACELOG(LOG_INFO, "    > Screen size:  %i x %i", CORE.Window.screen.width, CORE.Window.screen.height);
++        TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
++        TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
++    }
++
++    // Load OpenGL extensions
++    // NOTE: GL procedures address loader is required to load extensions
++    rlLoadExtensions(eglGetProcAddress);
++    //const char *gl_exts = (char *) glGetString(GL_EXTENSIONS);
++    //TRACELOG(LOG_INFO,"PLATFORM: GL_VENDOR:   \"%s\"", glGetString(GL_VENDOR));
++    //TRACELOG(LOG_INFO,"PLATFORM: GL_VERSION:  \"%s\"", glGetString(GL_VERSION));
++    //TRACELOG(LOG_INFO,"PLATFORM: GL_RENDERER: \"%s\"", glGetString(GL_RENDERER));
++    //TRACELOG(LOG_INFO,"PLATFORM: SL_VERSION:  \"%s\"", glGetString(GL_SHADING_LANGUAGE_VERSION));
++    CORE.Window.ready = true;
++
++    // Initialize hi-res timer
++    InitTimer();
++
++    // Initialize base path for storage
++    CORE.Storage.basePath = GetWorkingDirectory();
++    TRACELOG(LOG_INFO, "PLATFORM: Initialized");
++
++    return 0;
++}
++
++// Close platform
++void ClosePlatform(void)
++{
++    // TODO: De-initialize graphics, inputs and more
++}
++
++// EOF
+diff --git a/src/platforms/rcore_vita.c b/src/platforms/rcore_vita.c
+new file mode 100644
+index 00000000..96378c3f
+--- /dev/null
++++ b/src/platforms/rcore_vita.c
+@@ -0,0 +1,617 @@
++/**********************************************************************************************
++*
++*   rcore_vita - Functions to manage window, graphics device and inputs
++*
++*   PLATFORM: VITA
++*       - PlayStation Vita
++*
++*   LIMITATIONS:
++*       - Limitation 01
++*       - Limitation 02
++*
++*   POSSIBLE IMPROVEMENTS:
++*       - Improvement 01
++*       - Improvement 02
++*
++*   ADDITIONAL NOTES:
++*       - TRACELOG() function is located in raylib [utils] module using debugnet udp logs
++*       - Based in original port by Antonio Jose Ramos Marquez aka bigboss @psxdev		
++*
++*   CONFIGURATION:
++*       #define RCORE_PLATFORM_CUSTOM_FLAG
++*           Custom flag for rcore on target platform -not used-
++*
++*   DEPENDENCIES:
++*       VitaSDK - Provides C API to access Vita homebrew functionality
++*
++*
++*   LICENSE: zlib/libpng
++*
++*   Copyright (c) 2013-2023 Ramon Santamaria (@raysan5) and contributors
++*
++*   This software is provided "as-is", without any express or implied warranty. In no event
++*   will the authors be held liable for any damages arising from the use of this software.
++*
++*   Permission is granted to anyone to use this software for any purpose, including commercial
++*   applications, and to alter it and redistribute it freely, subject to the following restrictions:
++*
++*     1. The origin of this software must not be misrepresented; you must not claim that you
++*     wrote the original software. If you use this software in a product, an acknowledgment
++*     in the product documentation would be appreciated but is not required.
++*
++*     2. Altered source versions must be plainly marked as such, and must not be misrepresented
++*     as being the original software.
++*
++*     3. This notice may not be removed or altered from any source distribution.
++*
++**********************************************************************************************/
++#include <psp2/types.h>
++#include <pib.h>
++#include <psp2/gxm.h>
++#include <psp2/display.h>
++#include <psp2/kernel/processmgr.h>
++#include "EGL/egl.h"
++#include "EGL/eglext.h"
++#include "GLES2/gl2.h"
++
++//----------------------------------------------------------------------------------
++// Types and Structures Definition
++//----------------------------------------------------------------------------------
++typedef struct {
++    // TODO: Define the platform specific variables required
++
++    // Display data
++    EGLDisplay device;                  // Native display device (physical screen connection)
++    EGLSurface surface;                 // Surface to draw on, framebuffers (connected to context)
++    EGLContext context;                 // Graphic context, mode in which drawing can be done
++    EGLConfig config;                   // Graphic config
++} PlatformData;
++
++//----------------------------------------------------------------------------------
++// Global Variables Definition
++//----------------------------------------------------------------------------------
++extern CoreData CORE;                   // Global CORE state context
++
++static PlatformData platform = { 0 };   // Platform specific data
++
++//----------------------------------------------------------------------------------
++// Module Internal Functions Declaration
++//----------------------------------------------------------------------------------
++int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
++bool InitGraphicsDevice(void);   // Initialize graphics device
++
++//----------------------------------------------------------------------------------
++// Module Functions Declaration
++//----------------------------------------------------------------------------------
++// NOTE: Functions declaration is provided by raylib.h
++
++//----------------------------------------------------------------------------------
++// Module Functions Definition: Window and Graphics Device
++//----------------------------------------------------------------------------------
++
++// Check if application should close
++bool WindowShouldClose(void)
++{
++    if (CORE.Window.ready) return CORE.Window.shouldClose;
++    else return true;
++}
++
++// Toggle fullscreen mode
++void ToggleFullscreen(void)
++{
++    TRACELOG(LOG_WARNING, "ToggleFullscreen() not available on target platform");
++}
++
++// Toggle borderless windowed mode
++void ToggleBorderlessWindowed(void)
++{
++    TRACELOG(LOG_WARNING, "ToggleBorderlessWindowed() not available on target platform");
++}
++
++// Set window state: maximized, if resizable
++void MaximizeWindow(void)
++{
++    TRACELOG(LOG_WARNING, "MaximizeWindow() not available on target platform");
++}
++
++// Set window state: minimized
++void MinimizeWindow(void)
++{
++    TRACELOG(LOG_WARNING, "MinimizeWindow() not available on target platform");
++}
++
++// Set window state: not minimized/maximized
++void RestoreWindow(void)
++{
++    TRACELOG(LOG_WARNING, "RestoreWindow() not available on target platform");
++}
++
++// Set window configuration state using flags
++void SetWindowState(unsigned int flags)
++{
++    TRACELOG(LOG_WARNING, "SetWindowState() not available on target platform");
++}
++
++// Clear window configuration state flags
++void ClearWindowState(unsigned int flags)
++{
++    TRACELOG(LOG_WARNING, "ClearWindowState() not available on target platform");
++}
++
++// Set icon for window
++void SetWindowIcon(Image image)
++{
++    TRACELOG(LOG_WARNING, "SetWindowIcon() not available on target platform");
++}
++
++// Set icon for window
++void SetWindowIcons(Image *images, int count)
++{
++    TRACELOG(LOG_WARNING, "SetWindowIcons() not available on target platform");
++}
++
++// Set title for window
++void SetWindowTitle(const char *title)
++{
++    CORE.Window.title = title;
++}
++
++// Set window position on screen (windowed mode)
++void SetWindowPosition(int x, int y)
++{
++    TRACELOG(LOG_WARNING, "SetWindowPosition() not available on target platform");
++}
++
++// Set monitor for the current window
++void SetWindowMonitor(int monitor)
++{
++    TRACELOG(LOG_WARNING, "SetWindowMonitor() not available on target platform");
++}
++
++// Set window minimum dimensions (FLAG_WINDOW_RESIZABLE)
++void SetWindowMinSize(int width, int height)
++{
++    CORE.Window.screenMin.width = width;
++    CORE.Window.screenMin.height = height;
++}
++
++// Set window maximum dimensions (FLAG_WINDOW_RESIZABLE)
++void SetWindowMaxSize(int width, int height)
++{
++    CORE.Window.screenMax.width = width;
++    CORE.Window.screenMax.height = height;
++}
++
++// Set window dimensions
++void SetWindowSize(int width, int height)
++{
++    TRACELOG(LOG_WARNING, "SetWindowSize() not available on target platform");
++}
++
++// Set window opacity, value opacity is between 0.0 and 1.0
++void SetWindowOpacity(float opacity)
++{
++    TRACELOG(LOG_WARNING, "SetWindowOpacity() not available on target platform");
++}
++
++// Set window focused
++void SetWindowFocused(void)
++{
++    TRACELOG(LOG_WARNING, "SetWindowFocused() not available on target platform");
++}
++
++// Get native window handle
++void *GetWindowHandle(void)
++{
++    TRACELOG(LOG_WARNING, "GetWindowHandle() not implemented on target platform");
++    return NULL;
++}
++
++// Get number of monitors
++int GetMonitorCount(void)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorCount() not implemented on target platform");
++    return 1;
++}
++
++// Get number of monitors
++int GetCurrentMonitor(void)
++{
++    TRACELOG(LOG_WARNING, "GetCurrentMonitor() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor position
++Vector2 GetMonitorPosition(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorPosition() not implemented on target platform");
++    return (Vector2){ 0, 0 };
++}
++
++// Get selected monitor width (currently used by monitor)
++int GetMonitorWidth(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorWidth() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor height (currently used by monitor)
++int GetMonitorHeight(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorHeight() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor physical width in millimetres
++int GetMonitorPhysicalWidth(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorPhysicalWidth() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor physical height in millimetres
++int GetMonitorPhysicalHeight(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorPhysicalHeight() not implemented on target platform");
++    return 0;
++}
++
++// Get selected monitor refresh rate
++int GetMonitorRefreshRate(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorRefreshRate() not implemented on target platform");
++    return 0;
++}
++
++// Get the human-readable, UTF-8 encoded name of the selected monitor
++const char *GetMonitorName(int monitor)
++{
++    TRACELOG(LOG_WARNING, "GetMonitorName() not implemented on target platform");
++    return "";
++}
++
++// Get window position XY on monitor
++Vector2 GetWindowPosition(void)
++{
++    TRACELOG(LOG_WARNING, "GetWindowPosition() not implemented on target platform");
++    return (Vector2){ 0, 0 };
++}
++
++// Get window scale DPI factor for current monitor
++Vector2 GetWindowScaleDPI(void)
++{
++    TRACELOG(LOG_WARNING, "GetWindowScaleDPI() not implemented on target platform");
++    return (Vector2){ 1.0f, 1.0f };
++}
++
++// Set clipboard text content
++void SetClipboardText(const char *text)
++{
++    TRACELOG(LOG_WARNING, "SetClipboardText() not implemented on target platform");
++}
++
++// Get clipboard text content
++// NOTE: returned string is allocated and freed by GLFW
++const char *GetClipboardText(void)
++{
++    TRACELOG(LOG_WARNING, "GetClipboardText() not implemented on target platform");
++    return NULL;
++}
++
++// Show mouse cursor
++void ShowCursor(void)
++{
++    CORE.Input.Mouse.cursorHidden = false;
++}
++
++// Hides mouse cursor
++void HideCursor(void)
++{
++    CORE.Input.Mouse.cursorHidden = true;
++}
++
++// Enables cursor (unlock cursor)
++void EnableCursor(void)
++{
++    // Set cursor position in the middle
++    SetMousePosition(CORE.Window.screen.width/2, CORE.Window.screen.height/2);
++
++    CORE.Input.Mouse.cursorHidden = false;
++}
++
++// Disables cursor (lock cursor)
++void DisableCursor(void)
++{
++    // Set cursor position in the middle
++    SetMousePosition(CORE.Window.screen.width/2, CORE.Window.screen.height/2);
++
++    CORE.Input.Mouse.cursorHidden = true;
++}
++
++// Swap back buffer with front buffer (screen drawing)
++void SwapScreenBuffer(void)
++{
++    eglSwapBuffers(platform.device, platform.surface);
++}
++
++//----------------------------------------------------------------------------------
++// Module Functions Definition: Misc
++//----------------------------------------------------------------------------------
++
++// Get elapsed time measure in seconds since InitTimer()
++double GetTime(void)
++{
++    return (double)(sceKernelGetProcessTimeWide() - CORE.Time.base)*1e-6;
++}
++
++// Open URL with default system browser (if available)
++// NOTE: This function is only safe to use if you control the URL given.
++// A user could craft a malicious string performing another action.
++// Only call this function yourself not with user input or make sure to check the string yourself.
++// Ref: https://github.com/raysan5/raylib/issues/686
++void OpenURL(const char *url)
++{
++   // Security check to (partially) avoid malicious code on target platform
++    if (strchr(url, '\'') != NULL) TRACELOG(LOG_WARNING, "SYSTEM: Provided URL could be potentially malicious, avoid [\'] character");
++    else
++    {
++        // TODO:
++    }
++}
++
++//----------------------------------------------------------------------------------
++// Module Functions Definition: Inputs
++//----------------------------------------------------------------------------------
++
++// Set internal gamepad mappings
++int SetGamepadMappings(const char *mappings)
++{
++    TRACELOG(LOG_WARNING, "SetGamepadMappings() not implemented on target platform");
++    return 0;
++}
++
++// Set mouse position XY
++void SetMousePosition(int x, int y)
++{
++    CORE.Input.Mouse.currentPosition = (Vector2){ (float)x, (float)y };
++    CORE.Input.Mouse.previousPosition = CORE.Input.Mouse.currentPosition;
++}
++
++// Set mouse cursor
++void SetMouseCursor(int cursor)
++{
++    TRACELOG(LOG_WARNING, "SetMouseCursor() not implemented on target platform");
++}
++
++// Register all input events
++void PollInputEvents(void)
++{
++#if defined(SUPPORT_GESTURES_SYSTEM)
++    // NOTE: Gestures update must be called every frame to reset gestures correctly
++    // because ProcessGestureEvent() is just called on an event, not every frame
++    UpdateGestures();
++#endif
++
++    // Reset keys/chars pressed registered
++    CORE.Input.Keyboard.keyPressedQueueCount = 0;
++    CORE.Input.Keyboard.charPressedQueueCount = 0;
++
++    // Reset key repeats
++    for (int i = 0; i < MAX_KEYBOARD_KEYS; i++) CORE.Input.Keyboard.keyRepeatInFrame[i] = 0;
++
++    // Reset last gamepad button/axis registered state
++    CORE.Input.Gamepad.lastButtonPressed = 0; // GAMEPAD_BUTTON_UNKNOWN
++    //CORE.Input.Gamepad.axisCount = 0;
++
++    // Register previous touch states
++    for (int i = 0; i < MAX_TOUCH_POINTS; i++) CORE.Input.Touch.previousTouchState[i] = CORE.Input.Touch.currentTouchState[i];
++
++    // Reset touch positions
++    // TODO: It resets on target platform the mouse position and not filled again until a move-event,
++    // so, if mouse is not moved it returns a (0, 0) position... this behaviour should be reviewed!
++    //for (int i = 0; i < MAX_TOUCH_POINTS; i++) CORE.Input.Touch.position[i] = (Vector2){ 0, 0 };
++
++    // Register previous keys states
++    // NOTE: Android supports up to 260 keys
++    //for (int i = 0; i < 260; i++)
++    //{
++    //    CORE.Input.Keyboard.previousKeyState[i] = CORE.Input.Keyboard.currentKeyState[i];
++    //    CORE.Input.Keyboard.keyRepeatInFrame[i] = 0;
++    //}
++
++    // TODO: Poll input events for current plaform
++}
++
++//----------------------------------------------------------------------------------
++// Module Internal Functions Definition
++//----------------------------------------------------------------------------------
++
++// Initialize platform: graphics, inputs and more
++int InitPlatform(void)
++{
++
++    TRACELOG(LOG_INFO, "PLATFORM: calling pibInit with PIB_SHACCCG|PIB_GET_PROC_ADDR_CORE");
++    int pib_ret=pibInit(PIB_SHACCCG|PIB_GET_PROC_ADDR_CORE );
++    if(pib_ret!=0)
++    {
++        TRACELOG(LOG_FATAL, "PLATFORM: calling pibInit return %d",pib_ret);
++        CORE.Window.ready = false;
++        return -1;
++    }
++
++
++    CORE.Window.fullscreen = true;
++    CORE.Window.flags |= FLAG_FULLSCREEN_MODE;
++
++    CORE.Window.display.width = CORE.Window.screen.width;            // User desired width
++    CORE.Window.display.height = CORE.Window.screen.height;          // User desired height
++    CORE.Window.render.width = CORE.Window.screen.width;
++    CORE.Window.render.height = CORE.Window.screen.height;
++    CORE.Window.eventWaiting = false;
++    CORE.Window.screenScale = MatrixIdentity();     // No draw scaling required by default
++    CORE.Window.currentFbo.width = CORE.Window.screen.width;
++    CORE.Window.currentFbo.height = CORE.Window.screen.height;
++    CORE.Input.Mouse.currentPosition.x = (float)CORE.Window.screen.width/2.0f;
++    CORE.Input.Mouse.currentPosition.y = (float)CORE.Window.screen.height/2.0f;
++    CORE.Input.Mouse.scale = (Vector2){ 1.0f, 1.0f };
++
++
++    EGLint samples = 0;
++    EGLint sampleBuffer = 0;
++    if (CORE.Window.flags & FLAG_MSAA_4X_HINT)
++    {
++        samples = 4;
++        sampleBuffer = 1;
++        TRACELOG(LOG_INFO, "PLATFORM: Trying to enable MSAA x4");
++    }
++
++ 	const EGLint framebufferAttribs[] = {
++        //EGL_CONFIG_ID, 2,                         // You can always provide a configuration id. The one displayed here is Configuration 2
++        EGL_RED_SIZE, 8,                            // These four are always 8
++        EGL_GREEN_SIZE, 8,                          //
++        EGL_BLUE_SIZE, 8,                           //
++        EGL_ALPHA_SIZE, 8,                          //
++        EGL_DEPTH_SIZE, 32,                         // Depth is either 32 or 0
++        EGL_STENCIL_SIZE, 8,                        //  Stencil Size is either 8 or 0
++        EGL_SURFACE_TYPE, 5,                        // This is ALWAYS 5
++        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,    // Always EGL_OPENGL_ES2_BIT or 0x4
++        EGL_SAMPLE_BUFFERS, sampleBuffer,    // Activate MSAA
++        EGL_SAMPLES, samples,       // 4x Antialiasing if activated (Free on MALI GPUs)
++        EGL_NONE
++    };
++
++    const EGLint contextAttribs[] =
++    {
++        EGL_CONTEXT_CLIENT_VERSION, 2,
++        EGL_NONE
++    };
++
++    EGLint numConfigs = 0;
++
++    // Get an EGL device connection
++    platform.device = eglGetDisplay(EGL_DEFAULT_DISPLAY);
++    if (platform.device == EGL_NO_DISPLAY)
++    {
++        TRACELOG(LOG_WARNING, "PLATFORM: Failed to initialize EGL device");
++        return -1;
++    }
++
++    // Initialize the EGL device connection
++    if (eglInitialize(platform.device, NULL, NULL) == EGL_FALSE)
++    {
++        // If all of the calls to eglInitialize returned EGL_FALSE then an error has occurred.
++        TRACELOG(LOG_WARNING, "PLATFORM: Failed to initialize EGL device");
++        return -1;
++    }
++
++    eglChooseConfig(platform.device, framebufferAttribs, &platform.config, 1, &numConfigs);
++
++    // Set rendering API
++    int ret=eglBindAPI(EGL_OPENGL_ES_API);
++    if(!ret)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM:  eglBindAPI failed: 0x%08X",ret);
++        return -1;
++    }
++    TRACELOG(LOG_INFO,"PLATFORM: eglBindAPI success.");
++
++	// Get an appropriate EGL framebuffer configuration
++    ret=eglChooseConfig(platform.device, framebufferAttribs, &platform.config, 1, &numConfigs);
++    if(!ret)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM: eglChooseConfig failed: 0x%08X",ret);
++        return -1;
++    }
++    if (numConfigs!=1)
++    {
++        TRACELOG(LOG_ERROR,"PLATFORM: No available configuration found.");
++        return -1;
++    }
++    TRACELOG(LOG_INFO,"PLATFORM: eglChooseConfig success.");
++    // Create an EGL rendering context
++    platform.context = eglCreateContext(platform.device, platform.config, EGL_NO_CONTEXT, contextAttribs);
++    if (platform.context == EGL_NO_CONTEXT)
++    {
++        TRACELOG(LOG_WARNING, "PLATFORM: Failed to create EGL context");
++        return -1;
++    }
++
++    // Create an EGL window surface
++    //---------------------------------------------------------------------------------
++    EGLint displayFormat = 0;
++
++    // EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is guaranteed to be accepted by ANativeWindow_setBuffersGeometry()
++    // As soon as we picked a EGLConfig, we can safely reconfigure the ANativeWindow buffers to match, using EGL_NATIVE_VISUAL_ID
++    eglGetConfigAttrib(platform.device, platform.config, EGL_NATIVE_VISUAL_ID, &displayFormat);
++
++    // At this point we need to manage render size vs screen size
++    // NOTE: This function use and modify global module variables:
++    //  -> CORE.Window.screen.width/CORE.Window.screen.height
++    //  -> CORE.Window.render.width/CORE.Window.render.height
++    //  -> CORE.Window.screenScale
++    SetupFramebuffer(CORE.Window.display.width, CORE.Window.display.height);
++
++    //ANativeWindow_setBuffersGeometry(platform.app->window, CORE.Window.render.width, CORE.Window.render.height, displayFormat);
++    //ANativeWindow_setBuffersGeometry(platform.app->window, 0, 0, displayFormat);       // Force use of native display size
++
++    platform.surface = eglCreateWindowSurface(platform.device, platform.config, VITA_WINDOW_960X544, NULL);
++    if(platform.surface==EGL_NO_SURFACE)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM: eglCreateWindowSurface failed: 0x%08X",ret);
++        return -1;
++    }
++    TRACELOG(LOG_INFO,"PLATFORM: eglCreateWindowSurface success.");
++
++    // There must be at least one frame displayed before the buffers are swapped
++    //eglSwapInterval(platform.device, 1);
++
++    if (eglMakeCurrent(platform.device, platform.surface, platform.surface, platform.context) == EGL_FALSE)
++    {
++        ret=eglGetError();
++        TRACELOG(LOG_ERROR,"PLATFORM: Failed to attach EGL rendering context to EGL surface 0x%08X",ret);
++        return -1;
++    }
++    else
++    {
++        CORE.Window.render.width = CORE.Window.screen.width;
++        CORE.Window.render.height = CORE.Window.screen.height;
++        CORE.Window.currentFbo.width = CORE.Window.render.width;
++        CORE.Window.currentFbo.height = CORE.Window.render.height;
++
++        TRACELOG(LOG_INFO, "PLATFORM: Device initialized successfully");
++        TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
++        TRACELOG(LOG_INFO, "    > Screen size:  %i x %i", CORE.Window.screen.width, CORE.Window.screen.height);
++        TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
++        TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
++    }
++
++    // Load OpenGL extensions
++    // NOTE: GL procedures address loader is required to load extensions
++    rlLoadExtensions(eglGetProcAddress);
++    //const char *gl_exts = (char *) glGetString(GL_EXTENSIONS);
++    //TRACELOG(LOG_INFO,"PLATFORM: GL_VENDOR:   \"%s\"", glGetString(GL_VENDOR));
++    //TRACELOG(LOG_INFO,"PLATFORM: GL_VERSION:  \"%s\"", glGetString(GL_VERSION));
++    //TRACELOG(LOG_INFO,"PLATFORM: GL_RENDERER: \"%s\"", glGetString(GL_RENDERER));
++    //TRACELOG(LOG_INFO,"PLATFORM: SL_VERSION:  \"%s\"", glGetString(GL_SHADING_LANGUAGE_VERSION));
++    CORE.Window.ready = true;
++
++    // Initialize hi-res timer
++    InitTimer();
++
++    // Initialize base path for storage
++    CORE.Storage.basePath = GetWorkingDirectory();
++    TRACELOG(LOG_INFO, "PLATFORM: Initialized");
++
++    return 0;
++}
++
++// Close platform
++void ClosePlatform(void)
++{
++    // TODO: De-initialize graphics, inputs and more
++}
++
++// EOF
+diff --git a/src/rcore.c b/src/rcore.c
+index 45398891..e00caeaf 100644
+--- a/src/rcore.c
++++ b/src/rcore.c
+@@ -19,7 +19,12 @@
+ *           - Linux DRM subsystem (KMS mode)
+ *       > PLATFORM_ANDROID:
+ *           - Android (ARM, ARM64)
+-*
++*       > PLATFORM_VITA:
++*           - PlayStation Vita
++*       > PLATFORM_ORBIS:
++*           - PlayStation 4 Orbis
++*       > PLATFORM_PROSPERO:
++*           - PlayStation 5 Prospero
+ *   CONFIGURATION:
+ *       #define SUPPORT_DEFAULT_FONT (default)
+ *           Default font is loaded on window initialization to be available for the user to render simple text.
+@@ -491,6 +496,12 @@ const char *TextFormat(const char *text, ...);              // Formatting of tex
+     #include "platforms/rcore_drm.c"
+ #elif defined(PLATFORM_ANDROID)
+     #include "platforms/rcore_android.c"
++#elif defined(PLATFORM_VITA)
++    #include "platforms/rcore_vita.c"
++#elif defined(PLATFORM_ORBIS)
++    #include "platforms/rcore_orbis.c"
++#elif defined(PLATFORM_PROSPERO)
++    #include "platforms/rcore_prospero.c"
+ #else
+     // TODO: Include your custom platform backend!
+     // i.e software rendering backend or console backend!
+@@ -559,6 +570,12 @@ void InitWindow(int width, int height, const char *title)
+     TRACELOG(LOG_INFO, "Platform backend: NATIVE DRM");
+ #elif defined(PLATFORM_ANDROID)
+     TRACELOG(LOG_INFO, "Platform backend: ANDROID");
++#elif defined(PLATFORM_VITA)
++    TRACELOG(LOG_INFO, "Platform backend: VITA");
++#elif defined(PLATFORM_ORBIS)
++    TRACELOG(LOG_INFO, "Platform backend: ORBIS");
++#elif defined(PLATFORM_PROSPERO)
++    TRACELOG(LOG_INFO, "Platform backend: PROSPERO");
+ #else
+     // TODO: Include your custom platform backend!
+     // i.e software rendering backend or console backend!
+@@ -610,7 +627,12 @@ void InitWindow(int width, int height, const char *title)
+ 
+     // Initialize platform
+     //--------------------------------------------------------------
+-    InitPlatform();
++    int ret=InitPlatform();
++    if(ret!=0)
++    {
++        TRACELOG(LOG_ERROR, "PLATFORM: Application not initialized");
++        return;
++    }    
+     //--------------------------------------------------------------
+ 
+     // Initialize rlgl default data (buffers and shaders)
+@@ -662,6 +684,7 @@ void InitWindow(int width, int height, const char *title)
+ 
+     // Initialize random seed
+     SetRandomSeed((unsigned int)time(NULL));
++    TRACELOG(LOG_INFO, "PLATFORM: Application initialized successfully");
+ }
+ 
+ // Close window and unload OpenGL context
+@@ -2034,9 +2057,11 @@ const char *GetWorkingDirectory(void)
+ {
+     static char currentDir[MAX_FILEPATH_LENGTH] = { 0 };
+     memset(currentDir, 0, MAX_FILEPATH_LENGTH);
+-
++#if !defined(PLATFORM_VITA) && !defined(PLATFORM_ORBIS) && !defined(PLATFORM_PROSPERO)
+     char *path = GETCWD(currentDir, MAX_FILEPATH_LENGTH - 1);
+-
++#else
++    char *path = ".";
++#endif
+     return path;
+ }
+ 
+@@ -2185,8 +2210,11 @@ void UnloadDirectoryFiles(FilePathList files)
+ // Change working directory, returns true on success
+ bool ChangeDirectory(const char *dir)
+ {
++#if !defined(PLATFORM_VITA) && !defined(PLATFORM_ORBIS) && !defined(PLATFORM_PROSPERO)
+     bool result = CHDIR(dir);
+-
++#else
++    bool result = 1;
++#endif
+     if (result != 0) TRACELOG(LOG_WARNING, "SYSTEM: Failed to change to directory: %s", dir);
+ 
+     return (result == 0);
+@@ -3047,7 +3075,7 @@ void InitTimer(void)
+     timeBeginPeriod(1);                 // Setup high-resolution timer to 1ms (granularity of 1-2 ms)
+ #endif
+ 
+-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__EMSCRIPTEN__)
++#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__EMSCRIPTEN__) || defined(PLATFORM_ORBIS) || defined(PLATFORM_PROSPERO)
+     struct timespec now = { 0 };
+ 
+     if (clock_gettime(CLOCK_MONOTONIC, &now) == 0)  // Success
+@@ -3056,7 +3084,9 @@ void InitTimer(void)
+     }
+     else TRACELOG(LOG_WARNING, "TIMER: Hi-resolution timer not available");
+ #endif
+-
++#if defined(PLATFORM_VITA)
++    CORE.Time.base=sceKernelGetProcessTimeWide();
++#endif
+     CORE.Time.previous = GetTime();     // Get time as double
+ }
+ 
+diff --git a/src/rlgl.h b/src/rlgl.h
+index 6cf9c7e9..ca5d6994 100644
+--- a/src/rlgl.h
++++ b/src/rlgl.h
+@@ -130,6 +130,15 @@
+     #define TRACELOGD(...) (void)0
+ #endif
+ 
++#if defined(PLATFORM_ORBIS) || defined(PLATFORM_PROSPERO)
++#include <stdio.h>
++#include <user_mem.h>
++extern char* default_vertex_shader;
++extern int default_vertex_shader_length;
++extern char* default_fragment_shader;
++extern int default_fragment_shader_length;
++#endif
++
+ // Allow custom memory allocators
+ #ifndef RL_MALLOC
+     #define RL_MALLOC(sz)     malloc(sz)
+@@ -4573,6 +4582,36 @@ static void rlLoadShaderDefault(void)
+     for (int i = 0; i < RL_MAX_SHADER_LOCATIONS; i++) RLGL.State.defaultShaderLocs[i] = -1;
+ 
+     // Vertex shader directly defined, no external file required
++#if defined (PLATFORM_VITA)
++    const char *defaultVShaderCode =
++    "void main(                         \n"
++    "float3 vertexPosition,             \n"
++    "float2 vertexTexCoord,             \n"
++    "float4 vertexColor,                \n"
++    "float2 out fragTexCoord : TEXCOORD0,\n"
++    "float4 out fragColor : COLOR0,      \n"
++    "float4 out gl_Position : POSITION, \n"
++    "uniform float4x4 mvp)              \n"
++    "{                                  \n"
++    "    fragTexCoord = vertexTexCoord; \n"
++    "    fragColor = vertexColor;       \n"
++    "    gl_Position = mul(float4(vertexPosition,1.f),mvp); \n"
++    "}                                  \n";
++    const char *defaultFShaderCode =
++    "void main(                       \n"
++    "float2 fragTexCoord : TEXCOORD0,   \n"
++    "float4 fragColor : COLOR0,                  \n"
++    "uniform sampler2D texture0,        \n"
++    "uniform float4 colDiffuse,        \n"
++    "float4 out finalColor)         \n"
++    "{                                  \n"
++    "    float4 texelColor = tex2D(texture0, fragTexCoord); \n" 
++    "    finalColor=texelColor*colDiffuse*fragColor;      \n"
++    "}                                  \n";
++#else
++#if defined (PLATFORM_ORBIS) || (PLATFORM_PROSPERO)
++//only if you have shader compiler support
++#else
+     const char *defaultVShaderCode =
+ #if defined(GRAPHICS_API_OPENGL_21)
+     "#version 120                       \n"
+@@ -4645,12 +4684,19 @@ static void rlLoadShaderDefault(void)
+     "    gl_FragColor = texelColor*colDiffuse*fragColor;      \n"
+     "}                                  \n";
+ #endif
+-
++#endif
++#endif
++#if defined(PLATFORM_ORBIS) || defined(PLATFORM_PROSPERO)
++    RLGL.State.defaultVShaderId=glCreateShader(GL_VERTEX_SHADER);
++    RLGL.State.defaultFShaderId=glCreateShader(GL_FRAGMENT_SHADER);
++    glShaderBinary(1, &RLGL.State.defaultVShaderId, 0, default_vertex_shader, default_vertex_shader_length);
++    glShaderBinary(1, &RLGL.State.defaultFShaderId, 0, default_fragment_shader, default_fragment_shader_length);
++#else
+     // NOTE: Compiled vertex/fragment shaders are not deleted,
+     // they are kept for re-use as default shaders in case some shader loading fails
+     RLGL.State.defaultVShaderId = rlCompileShader(defaultVShaderCode, GL_VERTEX_SHADER);     // Compile default vertex shader
+     RLGL.State.defaultFShaderId = rlCompileShader(defaultFShaderCode, GL_FRAGMENT_SHADER);   // Compile default fragment shader
+-
++#endif
+     RLGL.State.defaultShaderId = rlLoadShaderProgram(RLGL.State.defaultVShaderId, RLGL.State.defaultFShaderId);
+ 
+     if (RLGL.State.defaultShaderId > 0)
+diff --git a/src/rmodels.c b/src/rmodels.c
+index 229d373f..43b14d71 100644
+--- a/src/rmodels.c
++++ b/src/rmodels.c
+@@ -1210,7 +1210,7 @@ void UploadMesh(Mesh *mesh, bool dynamic)
+ 
+     // WARNING: When setting default vertex attribute values, the values for each generic vertex attribute
+     // is part of current state, and it is maintained even if a different program object is used
+-
++#if !defined(PLATFORM_VITA)
+     if (mesh->normals != NULL)
+     {
+         // Enable vertex attributes: normals (shader-location = 2)
+@@ -1227,7 +1227,7 @@ void UploadMesh(Mesh *mesh, bool dynamic)
+         rlSetVertexAttributeDefault(2, value, SHADER_ATTRIB_VEC3, 3);
+         rlDisableVertexAttribute(2);
+     }
+-
++#endif
+     if (mesh->colors != NULL)
+     {
+         // Enable vertex attribute: color (shader-location = 3)
+@@ -3935,11 +3935,12 @@ static Model LoadOBJ(const char *fileName)
+         char currentDir[1024] = { 0 };
+         strcpy(currentDir, GetWorkingDirectory()); // Save current working directory
+         const char *workingDir = GetDirectoryPath(fileName); // Switch to OBJ directory for material path correctness
++#if !defined(PLATFORM_VITA) && !defined(PLATFORM_ORBIS) && !defined(PLATFORM_PROSPERO)
+         if (CHDIR(workingDir) != 0)
+         {
+             TRACELOG(LOG_WARNING, "MODEL: [%s] Failed to change working directory", workingDir);
+         }
+-
++#endif
+         unsigned int flags = TINYOBJ_FLAG_TRIANGULATE;
+         int ret = tinyobj_parse_obj(&attrib, &meshes, &meshCount, &materials, &materialCount, fileText, dataSize, flags);
+ 
+@@ -4031,10 +4032,12 @@ static Model LoadOBJ(const char *fileName)
+         UnloadFileText(fileText);
+ 
+         // Restore current working directory
++#if !defined(PLATFORM_VITA) && !defined(PLATFORM_ORBIS) && !defined(PLATFORM_PROSPERO)
+         if (CHDIR(currentDir) != 0)
+         {
+             TRACELOG(LOG_WARNING, "MODEL: [%s] Failed to change working directory", currentDir);
+         }
++#endif
+     }
+ 
+     return model;
+diff --git a/src/utils.c b/src/utils.c
+index 51d84cfe..8c0c91de 100644
+--- a/src/utils.c
++++ b/src/utils.c
+@@ -103,6 +103,224 @@ static int android_close(void *cookie);
+ void SetTraceLogLevel(int logType) { logTypeLevel = logType; }
+ 
+ // Show trace log messages (LOG_INFO, LOG_WARNING, LOG_ERROR, LOG_DEBUG)
++#if defined(PLATFORM_VITA)
++#include <vitasdk.h>
++static void *net_memory = NULL;
++static SceNetInAddr vita_addr;
++struct SceNetSockaddrIn stSockAddr;
++int debugnet_initialized;
++int SocketFD;
++#define NET_INIT_SIZE 1*1024*1024
++
++/**
++ * UDP printf for debugnet library,
++ * use debugNetPrintf() instead unless necessary
++ *
++ * @par Example:
++ * @code
++ * debugNetUDPPrintf("This is a %s test\n", "real");
++ * @endcode
++ */
++void debugNetUDPPrintf(const char* fmt, ...)
++{
++  char buffer[1024];
++  va_list arg;
++  va_start(arg, fmt);
++  sceClibVsnprintf(buffer, sizeof(buffer), fmt, arg);
++  va_end(arg);
++  
++  debugNetUDPSend(buffer);
++}
++/**
++ * UDP Raw text send for debugnet library,
++ * use debugNetPrintf() instead unless necessary
++ *
++ * @par Example:
++ * @code
++ * debugNetUDPSend("This is a test\n");
++ * @endcode
++ *
++ * @param text - NULL-terminated buffer containing the raw text to send
++ */
++void debugNetUDPSend(const char *text)
++{
++    sceNetSend(SocketFD, text, strlen(text), 0);
++}
++/**
++ * Init debugnet library 
++ *
++ * @par Example:
++ * @code
++ * #define LOGLEVEL 3  
++ * int ret;
++ * ret = debugNetInit("172.26.0.2", 18194, DEBUG);
++ * @endcode
++ *
++ * @param serverIP - your pc/mac server ip
++ * @param port - udp port server
++ * @param level - DEBUG,ERROR,INFO or NONE 
++ */
++int debugNetInit(const char *serverIp, int port, int level)
++{
++    int ret=0;
++    SceNetInitParam initparam;
++    SceNetCtlInfo info;
++    
++    
++    
++    //debugNetSetLogLevel(level);
++    
++    
++    if (sceSysmoduleIsLoaded(SCE_SYSMODULE_NET) != SCE_SYSMODULE_LOADED)
++    ret=sceSysmoduleLoadModule(SCE_SYSMODULE_NET);
++    
++    if (ret >=0) 
++    {
++        
++    
++    /*net initialazation code from xerpi at https://github.com/xerpi/FTPVita/blob/master/ftp.c*/
++    /* Init Net */
++    if (sceNetShowNetstat() == SCE_NET_ERROR_ENOTINIT) {
++        net_memory = malloc(NET_INIT_SIZE);
++
++        initparam.memory = net_memory;
++        initparam.size = NET_INIT_SIZE;
++        initparam.flags = 0;
++
++        ret = sceNetInit(&initparam);
++        //printf("sceNetInit(): 0x%08X\n", ret);
++    } else {
++        //printf("Net is already initialized.\n");
++    }
++
++    /* Init NetCtl */
++    ret = sceNetCtlInit();
++    //printf("sceNetCtlInit(): 0x%08X\n", ret);
++   
++
++    /* Get IP address */
++    ret = sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_IP_CONFIG, &info);
++    //printf("sceNetCtlInetGetInfo(): 0x%08X\n", ret);
++
++
++    /* Save the IP of PSVita to a global variable */
++    sceNetInetPton(SCE_NET_AF_INET, info.ip_address, &vita_addr);
++    
++    /* Create datagram udp socket*/
++    SocketFD = sceNetSocket("debugnet_socket",
++        SCE_NET_AF_INET , SCE_NET_SOCK_DGRAM, SCE_NET_IPPROTO_UDP);
++   
++    memset(&stSockAddr, 0, sizeof stSockAddr);
++    
++    
++    /*Populate SceNetSockaddrIn structure values*/
++    stSockAddr.sin_family = SCE_NET_AF_INET;
++    stSockAddr.sin_port = sceNetHtons(port);
++    sceNetInetPton(SCE_NET_AF_INET, serverIp, &stSockAddr.sin_addr);
++
++    /*Connect socket to server*/
++    sceNetConnect(SocketFD, (struct SceNetSockaddr *)&stSockAddr, sizeof stSockAddr);
++
++    /*Show log on pc/mac side*/
++    debugNetUDPPrintf("[VITA][INFO]:debugnet initialized\n");
++    debugNetUDPPrintf("[VITA][INFO]:Copyright (C) 2010,2020 Antonio Jose Ramos Marquez aka bigboss @psxdev\n");
++    debugNetUDPPrintf("[VITA][INFO]:ready to have a lot of fun...\n");
++
++    /*library debugnet initialized*/
++    debugnet_initialized = 1;
++    }
++
++    return debugnet_initialized;
++}
++ // Show trace log messages (LOG_INFO, LOG_WARNING, LOG_ERROR, LOG_DEBUG)
++void TraceLog(int logType, const char *text, ...)
++{
++    // Message has level below current threshold, don't emit
++    if (logType < logTypeLevel) return;
++
++    char buffer[1024] = { 0 };
++    va_list args;
++    
++    va_start(args, text);
++       
++    sceClibVsnprintf(buffer,1024, text, args);
++    buffer[1024-1] = 0;
++    va_end(args);
++
++    switch (logType)
++    {
++        case LOG_TRACE: debugNetUDPPrintf("[VITA][TRACE]: %s\n",buffer); break;
++        case LOG_DEBUG: debugNetUDPPrintf("[VITA][DEBUG]: %s\n",buffer); break;
++        case LOG_INFO: debugNetUDPPrintf("[VITA][INFO]: %s\n",buffer); break;
++        case LOG_WARNING: debugNetUDPPrintf("[VITA][WARNING]: %s\n",buffer); break;
++        case LOG_ERROR: debugNetUDPPrintf("[VITA][ERROR]: %s\n",buffer); break;
++        case LOG_FATAL: debugNetUDPPrintf("[VITA][FATAL]: %s\n",buffer); break;
++        default: break;
++    }
++}
++#else
++#if defined(PLATFORM_ORBIS)
++void TraceLog(int logType, const char *text, ...)
++{
++    // Message has level below current threshold, don't emit
++    if (logType < logTypeLevel) return;
++
++    char buffer[1024] = { 0 };
++    va_list args;
++    
++    va_start(args, text);
++       
++    vsnprintf(buffer,1024, text, args);
++    buffer[1024-1] = 0;
++    va_end(args);
++
++    switch (logType)
++    {
++        case LOG_TRACE: printf("[ORBIS][TRACE]: %s\n",buffer); break;
++        case LOG_DEBUG: printf("[ORBIS][DEBUG]: %s\n",buffer); break;
++        case LOG_INFO: printf("[ORBIS][INFO]: %s\n",buffer); break;
++        case LOG_WARNING: printf("[ORBIS][WARNING]: %s\n",buffer); break;
++        case LOG_ERROR: printf("[ORBIS][ERROR]: %s\n",buffer); break;
++        case LOG_FATAL: printf("[ORBIS][FATAL]: %s\n",buffer); break;
++        default: break;
++    }
++}
++#else
++#if defined(PLATFORM_PROSPERO)
++void debugNetUDPPrintf(const char* fmt, ...)
++{
++    char buffer[0x800];
++    va_list arg;
++    va_start(arg, fmt);
++    vsnprintf(buffer, sizeof(buffer), fmt, arg);
++    va_end(arg);
++    //sceNetSend(dconfig->SocketFD, buffer, strlen(buffer), 0);
++    syscall(0x259, 7, buffer, 0);
++}
++void TraceLog(int level,const char* format, ...) 
++{
++    char msgbuf[0x800];
++    va_list args;
++    
++        //if (level>dconfig->logLevel)
++        //return;
++       
++    va_start(args, format);
++    vsnprintf(msgbuf,2048, format, args);   
++    msgbuf[2047] = 0;
++    va_end(args);
++    switch(level)
++    {
++        case LOG_TRACE: debugNetUDPPrintf("<118>[PROSPERO][TRACE]: %s\n",buffer); break;
++        case LOG_DEBUG: debugNetUDPPrintf("<118>[PROSPERO][DEBUG]: %s\n",buffer); break;
++        case LOG_INFO: debugNetUDPPrintf("<118>[PROSPERO][INFO]: %s\n",buffer); break;
++        case LOG_WARNING: debugNetUDPPrintf("<118>[PROSPERO][WARNING]: %s\n",buffer); break;
++        case LOG_ERROR: debugNetUDPPrintf("<118>[PROSPERO][ERROR]: %s\n",buffer); break;
++        case LOG_FATAL: debugNetUDPPrintf("<118>[PROSPERO][FATAL]: %s\n",buffer); break;
++        default: break;
++    }
++}
++#else
+ void TraceLog(int logType, const char *text, ...)
+ {
+ #if defined(SUPPORT_TRACELOG)
+@@ -157,7 +375,9 @@ void TraceLog(int logType, const char *text, ...)
+ 
+ #endif  // SUPPORT_TRACELOG
+ }
+-
++#endif
++#endif
++#endif
+ // Internal memory allocator
+ // NOTE: Initializes to zero by default
+ void *MemAlloc(unsigned int size)
+diff --git a/src/utils.h b/src/utils.h
+index ff8246a7..1b5dd1c6 100644
+--- a/src/utils.h
++++ b/src/utils.h
+@@ -31,7 +31,12 @@
+     #include <stdio.h>                      // Required for: FILE
+     #include <android/asset_manager.h>      // Required for: AAssetManager
+ #endif
+-
++#if defined(PLATFORM_VITA)
++int debugNetInit(const char *serverIp, int port, int level);
++void debugNetUDPSend(const char *text);
++void debugNetUDPPrintf(const char *format, ...);
++#define debugNetPrintf TRACELOG
++#endif
+ #if defined(SUPPORT_TRACELOG)
+     #define TRACELOG(level, ...) TraceLog(level, __VA_ARGS__)
+ 

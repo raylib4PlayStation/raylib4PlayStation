@@ -1,0 +1,26 @@
+pkgname=raylib4Vita
+pkgver=5.0.0
+pkgrel=1
+gitrev=ae50bfa2cc569c0f8d5bc4315d39db64005b1b08
+url="https://github.com/raysan5/raylib/"
+source=("https://github.com/raysan5/raylib/archive/$gitrev.zip" 'PlayStation_raylib.patch')
+sha256sums=(SKIP SKIP)
+
+prepare() {
+  mv raylib-$gitrev $pkgname-$pkgver
+  cd $pkgname-$pkgver
+  patch --strip=1 --input="${srcdir}/PlayStation_raylib.patch"
+}
+
+build() {
+  cd $pkgname-$pkgver
+  cd src
+  make DESTDIR=$pkgdir -j$(nproc)
+}
+
+package () {
+  cd $pkgname-$pkgver
+  cd src
+  make DESTDIR=$pkgdir install
+  cd ../..
+}
